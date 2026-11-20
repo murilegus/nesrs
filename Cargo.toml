@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/nesrs-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["Murilegus"]
+repository = "https://github.com/murilegus/nesrs"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# The emulator core is far too slow without optimisation, even while debugging.
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

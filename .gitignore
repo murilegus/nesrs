@@ -1,0 +1,9 @@
+/target
+*.sav
+# Commercial ROMs are copyrighted: never commit them.
+*.nes
+*.sfc
+*.smc
+!test-roms/**/*.nes
+.idea/
+.vscode/
