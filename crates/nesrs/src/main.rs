@@ -2,6 +2,7 @@
 
 mod app;
 mod audio;
+mod gamepad;
 mod osd;
 mod session;
 mod video;
@@ -29,8 +30,14 @@ Options:
   -h, --help           Show this help
 
 Controls:
-  Arrow keys  D-pad        X  A        Z  B
-  Enter       Start        Right Shift / Tab  Select
+                Player 1          Player 2
+  D-pad         Arrow keys        W A S D
+  A / B         X / Z             G / F
+  Start         Enter             E
+  Select        Right Shift, Tab  Q
+
+  The first two game controllers plugged in also drive players 1 and 2.
+
   R  Reset    P  Pause     M  Mute     F11  Fullscreen    Esc  Quit
   Ctrl+O  Open ROM         F5  Save state        F8  Load state
   0-9     Select save state slot (default 1)";

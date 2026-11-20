@@ -217,3 +217,27 @@ fn bad_save_states_are_rejected_without_side_effects() {
     let mut other = Nes::new(&rom(&[0xA9, 0x02, 0x8D, 0x14, 0x40], 0)).unwrap();
     assert_eq!(other.load_state(&state), Err(StateError::WrongRom));
 }
+
+#[test]
+fn both_controller_ports_are_read_independently() {
+    // Strobe, then shift eight bits from $4016 into $20 and from $4017 into $21.
+    #[rustfmt::skip]
+    let code = [
+        0xA9, 0x01, 0x8D, 0x16, 0x40,       // LDA #1; STA $4016
+        0xA9, 0x00, 0x8D, 0x16, 0x40,       // LDA #0; STA $4016
+        0xA2, 0x08,                         // LDX #8
+        0xAD, 0x16, 0x40, 0x4A, 0x26, 0x20, // LDA $4016; LSR A; ROL $20
+        0xAD, 0x17, 0x40, 0x4A, 0x26, 0x21, // LDA $4017; LSR A; ROL $21
+        0xCA, 0xD0, 0xF1,                   // DEX; BNE
+        0x4C, 0x1B, 0x80,                   // JMP self
+    ];
+    let mut nes = Nes::new(&rom(&code, 0)).unwrap();
+    nes.set_buttons(0, button::A | button::RIGHT);
+    nes.set_buttons(1, button::B | button::START | button::UP);
+    for _ in 0..200 {
+        nes.step();
+    }
+    // The first button read ends up in bit 7: A B Select Start Up Down Left Right.
+    assert_eq!(nes.ram()[0x20], 0b1000_0001);
+    assert_eq!(nes.ram()[0x21], 0b0101_1000);
+}
