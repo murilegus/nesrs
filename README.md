@@ -17,6 +17,8 @@ per-platform frontends.
 - **Save states** — ten slots per game, checked against the ROM they belong to
 - **Desktop frontend** — keyboard input, sound, integer scaling, fullscreen,
   open ROMs from a file dialog or by drag and drop, battery saves
+- **Web frontend** — the same core compiled to WebAssembly, with touch
+  controls for phones and saves kept in the browser
 
 NTSC only for now.
 
@@ -43,7 +45,7 @@ and `file-dialog` (the `Ctrl+O` dialog). To build without either:
 cargo run --release --no-default-features -- path/to/game.nes
 ```
 
-## Usage
+## Usage (desktop)
 
 ```
 nesrs [OPTIONS] [ROM]
@@ -80,12 +82,44 @@ for save states.
 Dropping a file onto the window works on X11, Windows and macOS; the windowing
 library does not support it on Wayland yet, so use `Ctrl+O` there.
 
+## Web frontend
+
+The web build needs the WebAssembly target and the wasm-bindgen tool, once:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+```bash
+cargo install wasm-bindgen-cli --version 0.2.130 --locked
+```
+
+Build it, then serve the resulting static site with anything:
+
+```bash
+./scripts/build-web.sh
+```
+
+```bash
+python3 -m http.server -d crates/nesrs-web/www 8080
+```
+
+Open <http://localhost:8080>, then pick a ROM or drop one on the page. Keys
+are the same as on desktop, and touch devices get an on-screen controller.
+ROMs are read locally and never uploaded; save states and battery saves live
+in the browser's `localStorage`. Adding `?rom=some/file.nes` to the address
+loads a ROM hosted next to the page.
+
+`crates/nesrs-web/www` is a plain static site, so it can be published on any
+static host as it is.
+
 ## Project layout
 
 | Crate | Purpose |
 |---|---|
 | [`crates/nesrs-core`](crates/nesrs-core) | The emulator itself. No dependencies, no I/O, no `unsafe`. |
 | [`crates/nesrs`](crates/nesrs) | Desktop frontend (winit, softbuffer, cpal). |
+| [`crates/nesrs-web`](crates/nesrs-web) | WebAssembly bindings and the web page (`www/`). |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
 
@@ -102,7 +136,6 @@ Extra accuracy tests run when their ROMs are present; see
 
 - Validate against blargg's and other test ROM suites (nestest already passes)
 - Second controller, gamepad support, configurable keys
-- Web frontend (WebAssembly)
 - More mappers, PAL timing
 - A SNES core alongside the NES one
 

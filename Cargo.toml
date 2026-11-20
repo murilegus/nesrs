@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/nesrs-core", "crates/nesrs"]
+members = ["crates/nesrs-core", "crates/nesrs", "crates/nesrs-web"]
 default-members = ["crates/nesrs"]
 
 [workspace.package]

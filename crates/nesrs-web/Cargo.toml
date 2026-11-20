@@ -1,0 +1,22 @@
+[package]
+name = "nesrs-web"
+description = "WebAssembly bindings for the nesrs NES emulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+# cdylib for the browser, rlib so the unit tests can run natively.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+nesrs-core = { path = "../nesrs-core", version = "0.1.0" }
+wasm-bindgen = "0.2.130"
+
+# The code wasm-bindgen generates needs `unsafe`, so the workspace-wide
+# `forbid` is relaxed to `deny` here; this crate's own code has none.
+[lints.rust]
+unsafe_code = "deny"

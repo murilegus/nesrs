@@ -1,0 +1,282 @@
+:root {
+  color-scheme: dark;
+  --bg: #101018;
+  --panel: #1b1b27;
+  --line: #2e2e40;
+  --text: #e8e8f0;
+  --muted: #9a9ab0;
+  --accent: #e4572e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, sans-serif;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+}
+
+button,
+.button,
+select {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #26263a;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled),
+.button:hover {
+  border-color: var(--muted);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 0;
+  padding: 16px;
+}
+
+#screen {
+  position: relative;
+  /* As large as fits, at the NES picture's 16:15 shape. */
+  width: min(100%, calc((100vh - 230px) * 16 / 15));
+  max-width: 1024px;
+  aspect-ratio: 16 / 15;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+#screen.dragging {
+  outline: 3px dashed var(--accent);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+#screen:fullscreen {
+  width: 100vw;
+  max-width: none;
+  border-radius: 0;
+}
+
+#screen:fullscreen canvas {
+  object-fit: contain;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(16 16 24 / 85%);
+  text-align: center;
+  font-size: 17px;
+}
+
+#overlay[hidden] {
+  display: none;
+}
+
+#toast {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  background: rgb(16 16 24 / 90%);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+#toast.visible {
+  opacity: 1;
+}
+
+#toast.error {
+  color: #ff9d85;
+}
+
+footer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+footer dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 6px;
+}
+
+footer dl div {
+  display: flex;
+  gap: 6px;
+}
+
+footer dt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+footer dd,
+footer p {
+  margin: 0;
+}
+
+/* On-screen controller, shown only on touch devices. */
+#touch {
+  display: none;
+  width: 100%;
+  max-width: 480px;
+  /* D-pad on the left, A/B on the right, Select/Start centred underneath. */
+  grid-template: "dpad . face" "middle middle middle" / auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#touch button {
+  touch-action: none;
+  padding: 0;
+  background: #26263a;
+}
+
+#touch button.held {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dpad {
+  grid-area: dpad;
+  display: grid;
+  grid-template: repeat(3, 48px) / repeat(3, 48px);
+}
+
+.dpad .up {
+  grid-area: 1 / 2;
+}
+
+.dpad .left {
+  grid-area: 2 / 1;
+}
+
+.dpad .right {
+  grid-area: 2 / 3;
+}
+
+.dpad .down {
+  grid-area: 3 / 2;
+}
+
+.middle {
+  grid-area: middle;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.middle button {
+  padding: 8px 12px !important;
+  font-size: 13px;
+}
+
+.face {
+  grid-area: face;
+  display: flex;
+  gap: 12px;
+}
+
+.round {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+@media (pointer: coarse) {
+  #touch {
+    display: grid;
+  }
+
+  footer dl {
+    display: none;
+  }
+
+  #screen {
+    width: min(100%, calc((100vh - 440px) * 16 / 15));
+  }
+}
