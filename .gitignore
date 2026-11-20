@@ -4,6 +4,8 @@
 *.nes
 *.sfc
 *.smc
-!test-roms/**/*.nes
 .idea/
 .vscode/
+# Test ROMs are downloaded locally, not redistributed (see test-roms/README.md).
+/test-roms/*
+!/test-roms/README.md

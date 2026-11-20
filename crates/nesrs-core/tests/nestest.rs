@@ -14,6 +14,14 @@ fn field(line: &str, key: &str) -> u64 {
     u64::from_str_radix(&digits, radix).unwrap()
 }
 
+/// Parses the `PPU:scanline,dot` column.
+fn ppu_field(line: &str) -> (u16, u16) {
+    let start = line.find("PPU:").unwrap() + 4;
+    let end = line.find("CYC:").unwrap();
+    let (scanline, dot) = line[start..end].split_once(',').unwrap();
+    (scanline.trim().parse().unwrap(), dot.trim().parse().unwrap())
+}
+
 #[test]
 fn matches_the_reference_log() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-roms");
@@ -31,6 +39,7 @@ fn matches_the_reference_log() {
     for (number, line) in log.lines().enumerate() {
         let cpu = nes.cpu();
         let actual = (cpu.pc as u64, cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp, nes.cycles());
+        let ppu = nes.ppu_position();
         let expected = (
             u64::from_str_radix(&line[0..4], 16).unwrap(),
             field(line, "A:") as u8,
@@ -41,6 +50,7 @@ fn matches_the_reference_log() {
             field(line, "CYC:"),
         );
         assert_eq!(actual, expected, "diverged at log line {}:\n{line}", number + 1);
+        assert_eq!(ppu, ppu_field(line), "PPU position at log line {}:\n{line}", number + 1);
         nes.step();
     }
     // The ROM reports failures in $02 (official opcodes) and $03 (unofficial).

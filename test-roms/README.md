@@ -6,4 +6,13 @@ skipped.
 
 | File | Used by | Source |
 |---|---|---|
-| `nestest.nes`, `nestest.log` | `crates/nesrs-core/tests/nestest.rs` | kevtris's nestest, linked from the NESdev wiki "Emulator tests" page |
+| `nestest.nes`, `nestest.log` | `crates/nesrs-core/tests/nestest.rs` | kevtris's nestest: <https://www.qmtpro.com/~nes/misc/nestest.nes> and <https://www.qmtpro.com/~nes/misc/nestest.log> |
+
+The files are git-ignored: their licences do not clearly allow redistribution,
+so each developer downloads them locally.
+
+## Results
+
+| Test | Status |
+|---|---|
+| nestest (all 8991 logged instructions: registers, flags, cycle count and PPU position) | Pass |
