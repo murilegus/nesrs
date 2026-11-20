@@ -3,8 +3,8 @@
 A NES emulator written in Rust, built as a portable emulation core with thin
 per-platform frontends.
 
-> **Status: early.** The core passes its own unit and system tests, but it has
-> not yet been validated against the standard accuracy test ROMs or a broad
+> **Status: early.** The CPU matches the nestest reference log cycle for cycle, but the
+> PPU and APU have not yet been validated against accuracy test ROMs or a broad
 > set of games. Expect bugs.
 
 ## Features
@@ -85,7 +85,7 @@ Extra accuracy tests run when their ROMs are present; see
 
 ## Roadmap
 
-- Validate against nestest, blargg's and other test ROM suites
+- Validate against blargg's and other test ROM suites (nestest already passes)
 - Save states, second controller, gamepad support
 - Web frontend (WebAssembly)
 - More mappers, PAL timing
