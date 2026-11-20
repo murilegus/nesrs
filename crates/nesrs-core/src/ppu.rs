@@ -7,6 +7,7 @@
 
 use crate::cartridge::Mirroring;
 use crate::mapper::Mapper;
+use crate::state::State;
 
 pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
@@ -545,6 +546,40 @@ impl Ppu {
 fn palette_index(addr: u16) -> usize {
     let index = addr as usize & 0x1F;
     if index & 0x13 == 0x10 { index & 0x0F } else { index }
+}
+
+impl Ppu {
+    /// Saves or restores everything except the framebuffer, which is redrawn
+    /// within a frame anyway.
+    pub(crate) fn sync(&mut self, s: &mut State) {
+        s.u8(&mut self.ctrl);
+        s.u8(&mut self.mask);
+        s.u8(&mut self.status);
+        s.u8(&mut self.oam_addr);
+        s.u16(&mut self.v);
+        s.u16(&mut self.t);
+        s.u8(&mut self.fine_x);
+        s.bool(&mut self.w);
+        s.u8(&mut self.read_buffer);
+        s.u8(&mut self.io_latch);
+        s.bytes(&mut self.vram);
+        s.bytes(&mut self.palette);
+        s.bytes(&mut self.oam);
+        s.u16(&mut self.scanline);
+        s.u16(&mut self.dot);
+        s.u64(&mut self.frame);
+        s.bool(&mut self.odd_frame);
+        s.bool(&mut self.suppress_vblank);
+        s.u8(&mut self.nt_latch);
+        s.u8(&mut self.at_latch);
+        s.u8(&mut self.pattern_lo_latch);
+        s.u8(&mut self.pattern_hi_latch);
+        s.u16(&mut self.pattern_shift_lo);
+        s.u16(&mut self.pattern_shift_hi);
+        s.u16(&mut self.attr_shift_lo);
+        s.u16(&mut self.attr_shift_hi);
+        s.bytes(&mut self.sprite_line);
+    }
 }
 
 #[cfg(test)]

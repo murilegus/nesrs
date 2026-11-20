@@ -34,6 +34,8 @@ pub mod flag {
 }
 use flag::*;
 
+use crate::state::State;
+
 const NMI_VECTOR: u16 = 0xFFFA;
 const RESET_VECTOR: u16 = 0xFFFC;
 const IRQ_VECTOR: u16 = 0xFFFE;
@@ -687,6 +689,20 @@ impl Cpu {
     fn implied(&mut self, bus: &mut impl Bus, f: fn(&mut Cpu)) {
         bus.read(self.pc);
         f(self);
+    }
+}
+
+impl Cpu {
+    pub(crate) fn sync(&mut self, s: &mut State) {
+        s.u8(&mut self.a);
+        s.u8(&mut self.x);
+        s.u8(&mut self.y);
+        s.u8(&mut self.sp);
+        s.u8(&mut self.p);
+        s.u16(&mut self.pc);
+        s.bool(&mut self.jammed);
+        s.bool(&mut self.nmi_pending);
+        s.bool(&mut self.irq_pending);
     }
 }
 

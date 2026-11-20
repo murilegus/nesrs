@@ -5,6 +5,7 @@ mod mmc3;
 mod simple;
 
 use crate::cartridge::{Cartridge, Mirroring, RomError};
+use crate::state::State;
 
 /// Cartridge hardware as seen from the CPU and PPU buses.
 pub trait Mapper {
@@ -31,6 +32,8 @@ pub trait Mapper {
     }
     /// Restores battery-backed RAM from a previous [`Mapper::save_ram`] snapshot.
     fn load_save_ram(&mut self, _data: &[u8]) {}
+    /// Saves or restores the mapper's registers and RAM for a save state.
+    fn sync(&mut self, state: &mut State);
 }
 
 /// Mapper numbers implemented by this crate.
@@ -76,10 +79,65 @@ impl PrgRam {
         let len = data.len().min(self.data.len());
         self.data[..len].copy_from_slice(&data[..len]);
     }
+
+    fn sync(&mut self, s: &mut State) {
+        s.bytes(&mut self.data);
+    }
 }
 
 /// Reads from a ROM/RAM array as a sequence of `bank_size` banks, wrapping bank
 /// numbers that exceed the array (as the unconnected address lines would).
 fn banked(data: &[u8], bank: usize, bank_size: usize, addr: u16) -> usize {
     (bank * bank_size + (addr as usize & (bank_size - 1))) % data.len()
+}
+
+/// Saves or restores pattern memory, which only changes when it is RAM.
+fn sync_chr_ram(cart: &mut Cartridge, s: &mut State) {
+    if cart.chr_is_ram {
+        s.bytes(&mut cart.chr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cartridge::test_util::ines;
+
+    /// Reads enough of both address spaces to expose any banking difference.
+    fn observe(mapper: &mut dyn Mapper) -> (Vec<Option<u8>>, Vec<u8>, Mirroring, bool) {
+        let cpu = (0x6000..=0xFFFFu32).step_by(0x400).map(|a| mapper.cpu_read(a as u16)).collect();
+        let chr = (0..0x2000u16).step_by(0x100).map(|a| mapper.chr_read(a)).collect();
+        (cpu, chr, mapper.mirroring(), mapper.irq())
+    }
+
+    #[test]
+    fn every_mapper_round_trips_through_a_save_state() {
+        for id in SUPPORTED_MAPPERS {
+            // CHR RAM for the mappers that normally have it, CHR ROM otherwise.
+            let chr_units = if matches!(id, 2 | 7) { 0 } else { 4 };
+            let image = ines(id as u8, 8, chr_units, 0x02);
+            let build = || create(Cartridge::from_ines(&image).unwrap()).unwrap();
+
+            // Scribble over registers and RAM so the state differs from power-on.
+            let mut mapper = build();
+            for (step, addr) in (0x6000..=0xFFFFu32).step_by(0x3F1).enumerate() {
+                mapper.cpu_write(addr as u16, (step * 7 + 1) as u8 & 0x7F);
+            }
+            mapper.chr_write(0x0123, 0x5A);
+            for _ in 0..40 {
+                mapper.scanline();
+            }
+            let expected = observe(&mut *mapper);
+            assert_ne!(observe(&mut *build()), expected, "mapper {id}: writes had no effect");
+
+            let mut saver = State::saver();
+            mapper.sync(&mut saver);
+            let file = saver.finish(0);
+            let mut restored = build();
+            let mut loader = State::loader(State::open(&file, 0).unwrap());
+            restored.sync(&mut loader);
+            assert!(loader.fully_consumed(), "mapper {id}");
+            assert_eq!(observe(&mut *restored), expected, "mapper {id}");
+        }
+    }
 }

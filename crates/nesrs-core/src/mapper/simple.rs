@@ -1,7 +1,8 @@
 //! Discrete-logic mappers: NROM (0), UxROM (2), CNROM (3) and AxROM (7).
 
-use super::{Mapper, PrgRam, banked};
+use super::{Mapper, PrgRam, banked, sync_chr_ram};
 use crate::cartridge::{Cartridge, Mirroring};
+use crate::state::State;
 
 /// Mapper 0: no bank switching at all.
 pub struct Nrom {
@@ -54,6 +55,11 @@ impl Mapper for Nrom {
     fn load_save_ram(&mut self, data: &[u8]) {
         self.ram.load(data);
     }
+
+    fn sync(&mut self, s: &mut State) {
+        self.ram.sync(s);
+        sync_chr_ram(&mut self.cart, s);
+    }
 }
 
 /// Mapper 2: switchable 16 KiB PRG bank at `$8000`, last bank fixed at `$C000`.
@@ -97,6 +103,11 @@ impl Mapper for Uxrom {
     fn mirroring(&self) -> Mirroring {
         self.cart.mirroring
     }
+
+    fn sync(&mut self, s: &mut State) {
+        sync_chr_ram(&mut self.cart, s);
+        s.usize(&mut self.bank);
+    }
 }
 
 /// Mapper 3: fixed PRG, switchable 8 KiB CHR bank.
@@ -136,6 +147,11 @@ impl Mapper for Cnrom {
 
     fn mirroring(&self) -> Mirroring {
         self.cart.mirroring
+    }
+
+    fn sync(&mut self, s: &mut State) {
+        sync_chr_ram(&mut self.cart, s);
+        s.usize(&mut self.chr_bank);
     }
 }
 
@@ -177,6 +193,12 @@ impl Mapper for Axrom {
 
     fn mirroring(&self) -> Mirroring {
         if self.upper_screen { Mirroring::SingleUpper } else { Mirroring::SingleLower }
+    }
+
+    fn sync(&mut self, s: &mut State) {
+        sync_chr_ram(&mut self.cart, s);
+        s.usize(&mut self.bank);
+        s.bool(&mut self.upper_screen);
     }
 }
 

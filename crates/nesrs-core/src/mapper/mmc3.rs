@@ -1,7 +1,8 @@
 //! Mapper 4 (MMC3): 8 KiB PRG / 1 KiB CHR banking and a scanline IRQ counter.
 
-use super::{Mapper, PrgRam, banked};
+use super::{Mapper, PrgRam, banked, sync_chr_ram};
 use crate::cartridge::{Cartridge, Mirroring};
+use crate::state::State;
 
 pub struct Mmc3 {
     cart: Cartridge,
@@ -132,6 +133,19 @@ impl Mapper for Mmc3 {
 
     fn load_save_ram(&mut self, data: &[u8]) {
         self.ram.load(data);
+    }
+
+    fn sync(&mut self, s: &mut State) {
+        self.ram.sync(s);
+        sync_chr_ram(&mut self.cart, s);
+        s.u8(&mut self.bank_select);
+        s.bytes(&mut self.banks);
+        s.bool(&mut self.horizontal);
+        s.u8(&mut self.irq_latch);
+        s.u8(&mut self.irq_counter);
+        s.bool(&mut self.irq_reload);
+        s.bool(&mut self.irq_enabled);
+        s.bool(&mut self.irq_line);
     }
 }
 

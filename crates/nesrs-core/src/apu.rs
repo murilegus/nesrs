@@ -3,6 +3,8 @@
 //! The APU is clocked once per CPU cycle. Its output is averaged down to the
 //! host sample rate and high-pass filtered to remove the DC offset.
 
+use crate::state::State;
+
 /// NTSC CPU clock in Hz; the APU produces one raw sample per CPU cycle.
 pub const CPU_CLOCK_HZ: f64 = 1_789_772.727_272_727_3;
 
@@ -627,6 +629,95 @@ impl Apu {
         if self.samples.len() < self.sample_rate as usize {
             self.samples.push(output);
         }
+    }
+}
+
+impl LengthCounter {
+    fn sync(&mut self, s: &mut State) {
+        s.bool(&mut self.enabled);
+        s.bool(&mut self.halt);
+        s.u8(&mut self.value);
+    }
+}
+impl Envelope {
+    fn sync(&mut self, s: &mut State) {
+        s.bool(&mut self.start);
+        s.bool(&mut self.looping);
+        s.bool(&mut self.constant);
+        s.u8(&mut self.volume);
+        s.u8(&mut self.divider);
+        s.u8(&mut self.decay);
+    }
+}
+impl Pulse {
+    fn sync(&mut self, s: &mut State) {
+        s.u8(&mut self.duty);
+        s.u8(&mut self.step);
+        s.u16(&mut self.timer);
+        s.u16(&mut self.period);
+        self.length.sync(s);
+        self.envelope.sync(s);
+        s.bool(&mut self.sweep_enabled);
+        s.u8(&mut self.sweep_period);
+        s.bool(&mut self.sweep_negate);
+        s.u8(&mut self.sweep_shift);
+        s.u8(&mut self.sweep_divider);
+        s.bool(&mut self.sweep_reload);
+    }
+}
+impl Triangle {
+    fn sync(&mut self, s: &mut State) {
+        s.u16(&mut self.timer);
+        s.u16(&mut self.period);
+        s.u8(&mut self.step);
+        self.length.sync(s);
+        s.u8(&mut self.linear);
+        s.u8(&mut self.linear_reload_value);
+        s.bool(&mut self.linear_reload);
+    }
+}
+impl Noise {
+    fn sync(&mut self, s: &mut State) {
+        s.u16(&mut self.timer);
+        s.u16(&mut self.period);
+        s.bool(&mut self.short_mode);
+        s.u16(&mut self.shift);
+        self.length.sync(s);
+        self.envelope.sync(s);
+    }
+}
+impl Dmc {
+    fn sync(&mut self, s: &mut State) {
+        s.bool(&mut self.irq_enabled);
+        s.bool(&mut self.looping);
+        s.u16(&mut self.period);
+        s.u16(&mut self.timer);
+        s.u8(&mut self.output);
+        s.u16(&mut self.sample_addr);
+        s.u16(&mut self.sample_len);
+        s.u16(&mut self.addr);
+        s.u16(&mut self.remaining);
+        s.option_u8(&mut self.buffer);
+        s.u8(&mut self.shift);
+        s.u8(&mut self.bits_left);
+        s.bool(&mut self.silence);
+        s.bool(&mut self.irq);
+    }
+}
+impl Apu {
+    /// Saves or restores the sound hardware. The resampler's state is left
+    /// alone: it belongs to the host's audio stream, not to the console.
+    pub(crate) fn sync(&mut self, s: &mut State) {
+        self.pulse1.sync(s);
+        self.pulse2.sync(s);
+        self.triangle.sync(s);
+        self.noise.sync(s);
+        self.dmc.sync(s);
+        s.u64(&mut self.cycle);
+        s.u32(&mut self.frame_cycle);
+        s.bool(&mut self.five_step);
+        s.bool(&mut self.irq_inhibit);
+        s.bool(&mut self.frame_irq);
     }
 }
 

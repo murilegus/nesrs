@@ -4,6 +4,7 @@ use crate::bus::SystemBus;
 use crate::cartridge::{Cartridge, RomError};
 use crate::cpu::Cpu;
 use crate::mapper;
+use crate::state::{self, State, StateError};
 
 /// NTSC frame rate in frames per second.
 pub const FRAME_RATE: f64 = 60.0988;
@@ -12,13 +13,19 @@ pub const FRAME_RATE: f64 = 60.0988;
 pub struct Nes {
     cpu: Cpu,
     bus: SystemBus,
+    /// Identifies the ROM, so save states are only loaded into the game they came from.
+    rom_hash: u64,
 }
 
 impl Nes {
     /// Powers on a console with the given iNES ROM image inserted.
     pub fn new(rom: &[u8]) -> Result<Self, RomError> {
         let cartridge = Cartridge::from_ines(rom)?;
-        let mut nes = Nes { cpu: Cpu::new(), bus: SystemBus::new(mapper::create(cartridge)?) };
+        let mut nes = Nes {
+            cpu: Cpu::new(),
+            bus: SystemBus::new(mapper::create(cartridge)?),
+            rom_hash: state::hash(rom),
+        };
         nes.cpu.reset(&mut nes.bus);
         Ok(nes)
     }
@@ -82,6 +89,35 @@ impl Nes {
     /// Restores battery-backed RAM saved by [`Nes::save_ram`].
     pub fn load_save_ram(&mut self, data: &[u8]) {
         self.bus.mapper.load_save_ram(data);
+    }
+
+    /// Captures the complete state of the console. Takes `&mut self` only because
+    /// saving and loading share one code path; nothing is modified.
+    pub fn save_state(&mut self) -> Vec<u8> {
+        let mut state = State::saver();
+        self.sync(&mut state);
+        state.finish(self.rom_hash)
+    }
+
+    /// Restores a state captured by [`Nes::save_state`] for the same ROM. On error
+    /// the console is left untouched.
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), StateError> {
+        let body = State::open(data, self.rom_hash)?;
+        // The layout is fixed for a given ROM, so a different length means the
+        // state cannot be ours even though its checksum is valid.
+        let current = self.save_state();
+        if data.len() != current.len() {
+            return Err(StateError::Corrupt);
+        }
+        let mut state = State::loader(body);
+        self.sync(&mut state);
+        debug_assert!(state.fully_consumed());
+        Ok(())
+    }
+
+    fn sync(&mut self, state: &mut State) {
+        self.cpu.sync(state);
+        self.bus.sync(state);
     }
 
     // --- Debugging aids ----------------------------------------------------

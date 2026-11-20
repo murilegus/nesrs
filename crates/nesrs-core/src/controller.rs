@@ -12,6 +12,8 @@ pub mod button {
     pub const RIGHT: u8 = 0x80;
 }
 
+use crate::state::State;
+
 #[derive(Default)]
 pub struct Controller {
     buttons: u8,
@@ -52,6 +54,13 @@ impl Controller {
         let bit = self.shift & 1;
         self.shift = self.shift >> 1 | 0x80;
         bit
+    }
+}
+
+impl Controller {
+    pub(crate) fn sync(&mut self, s: &mut State) {
+        s.u8(&mut self.shift);
+        s.bool(&mut self.strobe);
     }
 }
 
