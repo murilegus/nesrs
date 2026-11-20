@@ -7,17 +7,42 @@ const TOAST_MS = 1800;
 const BATTERY_FLUSH_FRAMES = 600;
 
 const BUTTON = { A: 1, B: 2, SELECT: 4, START: 8, UP: 16, DOWN: 32, LEFT: 64, RIGHT: 128 };
+// Keyboard layout: [player, button].
 const KEYS = {
-  KeyX: BUTTON.A,
-  KeyZ: BUTTON.B,
-  ShiftRight: BUTTON.SELECT,
-  Tab: BUTTON.SELECT,
-  Enter: BUTTON.START,
-  ArrowUp: BUTTON.UP,
-  ArrowDown: BUTTON.DOWN,
-  ArrowLeft: BUTTON.LEFT,
-  ArrowRight: BUTTON.RIGHT,
+  KeyX: [0, BUTTON.A],
+  KeyZ: [0, BUTTON.B],
+  ShiftRight: [0, BUTTON.SELECT],
+  Tab: [0, BUTTON.SELECT],
+  Enter: [0, BUTTON.START],
+  ArrowUp: [0, BUTTON.UP],
+  ArrowDown: [0, BUTTON.DOWN],
+  ArrowLeft: [0, BUTTON.LEFT],
+  ArrowRight: [0, BUTTON.RIGHT],
+  KeyG: [1, BUTTON.A],
+  KeyF: [1, BUTTON.B],
+  KeyQ: [1, BUTTON.SELECT],
+  KeyE: [1, BUTTON.START],
+  KeyW: [1, BUTTON.UP],
+  KeyS: [1, BUTTON.DOWN],
+  KeyA: [1, BUTTON.LEFT],
+  KeyD: [1, BUTTON.RIGHT],
 };
+
+// Standard-mapping gamepad button indices. The bottom and right face buttons
+// are B and A, like the NES pad; the other two mirror them.
+const PAD_BUTTONS = [
+  [1, BUTTON.A],
+  [3, BUTTON.A],
+  [0, BUTTON.B],
+  [2, BUTTON.B],
+  [8, BUTTON.SELECT],
+  [9, BUTTON.START],
+  [12, BUTTON.UP],
+  [13, BUTTON.DOWN],
+  [14, BUTTON.LEFT],
+  [15, BUTTON.RIGHT],
+];
+const STICK_THRESHOLD = 0.5;
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
@@ -30,7 +55,7 @@ const slotSelect = $("slot");
 
 let emulator = null;
 let romKey = "";
-let keyboardButtons = 0;
+const keyboardButtons = [0, 0];
 let touchButtons = 0;
 let paused = false;
 let muted = false;
@@ -173,10 +198,36 @@ const audio = {
   },
 };
 
+// --- Gamepads ---------------------------------------------------------------
+
+function padButtons(pad) {
+  let buttons = 0;
+  for (const [index, mask] of PAD_BUTTONS) {
+    if (pad.buttons[index]?.pressed) buttons |= mask;
+  }
+  const [x = 0, y = 0] = pad.axes;
+  if (x < -STICK_THRESHOLD) buttons |= BUTTON.LEFT;
+  if (x > STICK_THRESHOLD) buttons |= BUTTON.RIGHT;
+  if (y < -STICK_THRESHOLD) buttons |= BUTTON.UP;
+  if (y > STICK_THRESHOLD) buttons |= BUTTON.DOWN;
+  return buttons;
+}
+
+// The first two connected gamepads drive players 1 and 2.
+function readGamepads() {
+  const pads = [...(navigator.getGamepads?.() ?? [])].filter((pad) => pad?.connected);
+  return [0, 1].map((player) => (pads[player] ? padButtons(pads[player]) : 0));
+}
+
+window.addEventListener("gamepadconnected", () => toast("Gamepad connected"));
+window.addEventListener("gamepaddisconnected", () => toast("Gamepad disconnected"));
+
 // --- Emulation loop ---------------------------------------------------------
 
 function runFrame() {
-  emulator.set_buttons(0, keyboardButtons | touchButtons);
+  const pads = readGamepads();
+  emulator.set_buttons(0, keyboardButtons[0] | touchButtons | pads[0]);
+  emulator.set_buttons(1, keyboardButtons[1] | pads[1]);
   if (audio.running) audio.steer();
   emulator.run_frame();
   const samples = emulator.take_audio();
@@ -281,9 +332,9 @@ function toggleFullscreen() {
 window.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   audio.start();
-  const button = KEYS[event.code];
-  if (button !== undefined) {
-    keyboardButtons |= button;
+  const key = KEYS[event.code];
+  if (key) {
+    keyboardButtons[key[0]] |= key[1];
     event.preventDefault();
     return;
   }
@@ -307,13 +358,13 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
-  const button = KEYS[event.code];
-  if (button !== undefined) keyboardButtons &= ~button;
+  const key = KEYS[event.code];
+  if (key) keyboardButtons[key[0]] &= ~key[1];
 });
 
 // Key releases are not delivered while the page is unfocused.
 window.addEventListener("blur", () => {
-  keyboardButtons = 0;
+  keyboardButtons.fill(0);
   touchButtons = 0;
   for (const held of document.querySelectorAll("#touch .held")) held.classList.remove("held");
 });

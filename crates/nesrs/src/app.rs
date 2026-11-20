@@ -16,6 +16,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::Options;
 use crate::audio::AudioOutput;
+use crate::gamepad::Gamepads;
 use crate::osd::{Anchor, Canvas};
 use crate::session::Session;
 use crate::video;
@@ -44,7 +45,9 @@ struct App {
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
     proxy: EventLoopProxy<UserEvent>,
     scale: u32,
-    buttons: u8,
+    /// Buttons held on the keyboard, per player.
+    keyboard: [u8; 2],
+    gamepads: Gamepads,
     ctrl_held: bool,
     paused: bool,
     muted: bool,
@@ -80,7 +83,8 @@ pub fn run(session: Option<Session>, options: &Options) -> Result<Option<Session
         surface: None,
         proxy: event_loop.create_proxy(),
         scale: options.scale,
-        buttons: 0,
+        keyboard: [0; 2],
+        gamepads: Gamepads::new(),
         ctrl_held: false,
         paused: false,
         muted: options.mute,
@@ -107,17 +111,27 @@ pub fn run(session: Option<Session>, options: &Options) -> Result<Option<Session
     }
 }
 
-/// Maps a keyboard key to a controller button.
-fn button_for(key: KeyCode) -> Option<u8> {
+/// Maps a keyboard key to a player (0 or 1) and one of their buttons.
+fn button_for(key: KeyCode) -> Option<(usize, u8)> {
     Some(match key {
-        KeyCode::KeyX => button::A,
-        KeyCode::KeyZ => button::B,
-        KeyCode::ShiftRight | KeyCode::Tab => button::SELECT,
-        KeyCode::Enter => button::START,
-        KeyCode::ArrowUp => button::UP,
-        KeyCode::ArrowDown => button::DOWN,
-        KeyCode::ArrowLeft => button::LEFT,
-        KeyCode::ArrowRight => button::RIGHT,
+        // Player 1: arrow keys and the bottom-left letter keys.
+        KeyCode::KeyX => (0, button::A),
+        KeyCode::KeyZ => (0, button::B),
+        KeyCode::ShiftRight | KeyCode::Tab => (0, button::SELECT),
+        KeyCode::Enter => (0, button::START),
+        KeyCode::ArrowUp => (0, button::UP),
+        KeyCode::ArrowDown => (0, button::DOWN),
+        KeyCode::ArrowLeft => (0, button::LEFT),
+        KeyCode::ArrowRight => (0, button::RIGHT),
+        // Player 2: WASD and the keys around it.
+        KeyCode::KeyG => (1, button::A),
+        KeyCode::KeyF => (1, button::B),
+        KeyCode::KeyQ => (1, button::SELECT),
+        KeyCode::KeyE => (1, button::START),
+        KeyCode::KeyW => (1, button::UP),
+        KeyCode::KeyS => (1, button::DOWN),
+        KeyCode::KeyA => (1, button::LEFT),
+        KeyCode::KeyD => (1, button::RIGHT),
         _ => return None,
     })
 }
@@ -179,7 +193,6 @@ impl App {
         if let Some(audio) = &self.audio {
             session.nes.set_sample_rate(audio.sample_rate());
         }
-        session.nes.set_buttons(0, self.buttons);
         self.session = Some(session);
         self.paused = false;
         self.next_frame = Instant::now();
@@ -240,8 +253,6 @@ impl App {
         let Some(session) = &mut self.session else { return };
         match session.load_state(slot) {
             Ok(true) => {
-                // The state holds the buttons as they were when it was saved.
-                session.nes.set_buttons(0, self.buttons);
                 self.next_frame = Instant::now();
                 self.toast(format!("STATE {slot} LOADED"));
             }
@@ -277,14 +288,11 @@ impl App {
             }
             return;
         }
-        if let Some(mask) = button_for(key) {
+        if let Some((player, mask)) = button_for(key) {
             if pressed {
-                self.buttons |= mask;
+                self.keyboard[player] |= mask;
             } else {
-                self.buttons &= !mask;
-            }
-            if let Some(session) = &mut self.session {
-                session.nes.set_buttons(0, self.buttons);
+                self.keyboard[player] &= !mask;
             }
             return;
         }
@@ -327,8 +335,16 @@ impl App {
 
     /// Emulates one frame and hands its sound to the audio device.
     fn emulate_frame(&mut self) {
+        let (pads, message) = self.gamepads.poll();
+        if let Some(message) = message {
+            self.toast(message);
+        }
         let Some(session) = &mut self.session else { return };
         let nes = &mut session.nes;
+        // Applied every frame, so input survives resets and loaded states.
+        for player in 0..2 {
+            nes.set_buttons(player, self.keyboard[player] | pads[player]);
+        }
         if let Some(audio) = &self.audio {
             // The audio device and the emulation loop run off different clocks.
             // Nudging the generated sample rate by up to 0.5% keeps the queue
@@ -422,11 +438,8 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::DroppedFile(path) => self.open_rom(&path),
             WindowEvent::Focused(false) => {
                 // Key releases are not delivered while unfocused.
-                self.buttons = 0;
+                self.keyboard = [0; 2];
                 self.ctrl_held = false;
-                if let Some(session) = &mut self.session {
-                    session.nes.set_buttons(0, 0);
-                }
             }
             WindowEvent::RedrawRequested => {
                 if let Err(message) = self.draw() {

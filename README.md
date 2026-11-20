@@ -18,6 +18,7 @@ it is read locally and never uploaded.
 - **APU** — both pulse channels, triangle, noise and DMC, with the frame counter and IRQs
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)
 - **Save states** — ten slots per game, checked against the ROM they belong to
+- **Two players**, on keyboard or game controllers
 - **Desktop frontend** — keyboard input, sound, integer scaling, fullscreen,
   open ROMs from a file dialog or by drag and drop, battery saves
 - **Web frontend** — the same core compiled to WebAssembly, with touch
@@ -29,10 +30,11 @@ NTSC only for now.
 
 You need a [Rust toolchain](https://rustup.rs) (1.92 or newer).
 
-On Linux, sound needs the ALSA development files:
+On Linux, sound needs the ALSA development files and game controllers need
+libudev's:
 
 ```bash
-sudo apt install pkgconf libasound2-dev
+sudo apt install pkgconf libasound2-dev libudev-dev
 ```
 
 Then:
@@ -41,8 +43,9 @@ Then:
 cargo run --release -- path/to/game.nes
 ```
 
-Optional features, both on by default: `audio` (sound, needs ALSA on Linux)
-and `file-dialog` (the `Ctrl+O` dialog). To build without either:
+Optional features, all on by default: `audio` (sound, needs ALSA on Linux),
+`gamepad` (game controllers, needs libudev on Linux) and `file-dialog` (the
+`Ctrl+O` dialog). To build without any of them:
 
 ```bash
 cargo run --release --no-default-features -- path/to/game.nes
@@ -63,12 +66,19 @@ nesrs [OPTIONS] [ROM]
 
 Started without a ROM, the window opens empty and waits for one.
 
+| | Player 1 | Player 2 |
+|---|---|---|
+| D-pad | Arrow keys | `W` `A` `S` `D` |
+| A / B | `X` / `Z` | `G` / `F` |
+| Start | `Enter` | `E` |
+| Select | `Right Shift` or `Tab` | `Q` |
+
+The first two game controllers plugged in also drive players 1 and 2: D-pad
+or left stick to move, the bottom and right face buttons for B and A (the
+other two mirror them), plus Start and Select.
+
 | Key | Action |
 |---|---|
-| Arrow keys | D-pad |
-| `X` / `Z` | A / B |
-| `Enter` | Start |
-| `Right Shift` or `Tab` | Select |
 | `R` | Reset |
 | `P` | Pause |
 | `M` | Mute |
@@ -108,7 +118,8 @@ python3 -m http.server -d crates/nesrs-web/www 8080
 ```
 
 Open <http://localhost:8080>, then pick a ROM or drop one on the page. Keys
-are the same as on desktop, and touch devices get an on-screen controller.
+and game controllers work as on desktop, and touch devices get an on-screen
+controller for player 1.
 ROMs are read locally and never uploaded; save states and battery saves live
 in the browser's `localStorage`. Adding `?rom=some/file.nes` to the address
 loads a ROM hosted next to the page.
@@ -140,7 +151,7 @@ Extra accuracy tests run when their ROMs are present; see
 ## Roadmap
 
 - Validate against blargg's and other test ROM suites (nestest already passes)
-- Second controller, gamepad support, configurable keys
+- Configurable keys and controller buttons
 - More mappers, PAL timing
 - A SNES core alongside the NES one
 
