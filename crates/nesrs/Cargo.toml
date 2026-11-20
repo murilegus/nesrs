@@ -1,0 +1,23 @@
+[package]
+name = "nesrs"
+description = "Desktop frontend for the nesrs NES emulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["audio"]
+# Sound output through cpal. On Linux this needs the ALSA development headers.
+audio = ["dep:cpal"]
+
+[dependencies]
+nesrs-core = { path = "../nesrs-core", version = "0.1.0" }
+winit = "0.30"
+softbuffer = "0.4"
+cpal = { version = "0.18", optional = true }
+
+[lints]
+workspace = true
