@@ -93,9 +93,10 @@ impl Emulator {
 
 /// Converts `0x00RRGGBB` pixels to opaque RGBA bytes.
 fn to_rgba(frame: &[u32], out: &mut [u8]) {
-    for (pixel, rgba) in frame.iter().zip(out.chunks_exact_mut(4)) {
+    let (pixels, _) = out.as_chunks_mut::<4>();
+    for (pixel, rgba) in frame.iter().zip(pixels) {
         let [_, r, g, b] = pixel.to_be_bytes();
-        rgba.copy_from_slice(&[r, g, b, 0xFF]);
+        *rgba = [r, g, b, 0xFF];
     }
 }
 
