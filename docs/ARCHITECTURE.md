@@ -78,3 +78,17 @@ out: one is redrawn within a frame, the other belongs to the host.
 - `session` — a loaded game and its files (battery save, save state slots).
 - `osd` — status messages drawn with a built-in bitmap font.
 - `video` — scaling and PPM screenshots.
+
+## The web frontend (`crates/nesrs-web`)
+
+The Rust side is a thin wasm-bindgen wrapper (`Emulator`) around `Nes`. All
+browser work is plain JavaScript in `www/`, with no bundler or dependencies:
+
+- `main.js` — loads ROMs, maps keys and touch buttons, runs frames from
+  `requestAnimationFrame` against a 60.0988 Hz clock (displays refresh at many
+  rates), and stores saves in `localStorage`.
+- `audio-worklet.js` — an `AudioWorklet` that plays queued samples and reports
+  its queue length, which `main.js` uses for the same rate control as desktop.
+
+`scripts/build-web.sh` compiles the crate and writes the generated glue to
+`www/pkg/`, which is not checked in.

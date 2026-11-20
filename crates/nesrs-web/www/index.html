@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>nesrs</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>nesrs</h1>
+      <div class="toolbar">
+        <label class="button primary">
+          Open ROM
+          <input id="rom-input" type="file" accept=".nes,application/octet-stream" hidden />
+        </label>
+        <button id="pause" disabled>Pause</button>
+        <button id="reset" disabled>Reset</button>
+        <span class="group">
+          <label for="slot">Slot</label>
+          <select id="slot"></select>
+          <button id="save" disabled>Save</button>
+          <button id="load" disabled>Load</button>
+        </span>
+        <button id="mute">Mute</button>
+        <button id="fullscreen">Fullscreen</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="screen">
+        <canvas id="canvas" width="256" height="240"></canvas>
+        <div id="overlay">
+          <p><strong>Open a ROM</strong> or drop a <code>.nes</code> file here</p>
+        </div>
+        <div id="toast" role="status" aria-live="polite"></div>
+      </div>
+
+      <div id="touch" aria-hidden="true">
+        <div class="dpad">
+          <button data-button="16" class="up">▲</button>
+          <button data-button="64" class="left">◀</button>
+          <button data-button="128" class="right">▶</button>
+          <button data-button="32" class="down">▼</button>
+        </div>
+        <div class="middle">
+          <button data-button="4">Select</button>
+          <button data-button="8">Start</button>
+        </div>
+        <div class="face">
+          <button data-button="2" class="round">B</button>
+          <button data-button="1" class="round">A</button>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <dl>
+        <div><dt>Arrows</dt><dd>D-pad</dd></div>
+        <div><dt>X / Z</dt><dd>A / B</dd></div>
+        <div><dt>Enter</dt><dd>Start</dd></div>
+        <div><dt>Right Shift</dt><dd>Select</dd></div>
+        <div><dt>F5 / F8</dt><dd>Save / load state</dd></div>
+        <div><dt>0-9</dt><dd>State slot</dd></div>
+        <div><dt>P, R, M</dt><dd>Pause, reset, mute</dd></div>
+      </dl>
+      <p>ROMs never leave your device. Saves are kept in this browser's storage.</p>
+    </footer>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

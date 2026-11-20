@@ -767,6 +767,14 @@ name = "nesrs-core"
 version = "0.1.0"
 
 [[package]]
+name = "nesrs-web"
+version = "0.1.0"
+dependencies = [
+ "nesrs-core",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "num-derive"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
