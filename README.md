@@ -3,6 +3,9 @@
 A NES emulator written in Rust, built as a portable emulation core with thin
 per-platform frontends.
 
+**[Play in your browser](https://trungit.dev/nesrs/)** — bring your own ROM;
+it is read locally and never uploaded.
+
 > **Status: early.** The CPU matches the nestest reference log cycle for cycle, and
 > Contra (UxROM) boots and plays, but the PPU and APU have not yet been validated
 > against accuracy test ROMs or a broad set of games. Expect bugs.
