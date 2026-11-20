@@ -144,3 +144,76 @@ fn unsupported_mappers_are_reported() {
     image[6] = 0x50; // mapper 5
     assert_eq!(Nes::new(&image).err(), Some(RomError::UnsupportedMapper(5)));
 }
+
+/// Everything observable about a run: picture, RAM, CPU and timing.
+fn fingerprint(nes: &Nes) -> (Vec<u32>, Vec<u8>, u16, u64, (u16, u16)) {
+    (nes.framebuffer().to_vec(), nes.ram().to_vec(), nes.cpu().pc, nes.cycles(), nes.ppu_position())
+}
+
+#[test]
+fn save_state_resumes_exactly_where_it_was_taken() {
+    let mut nes = Nes::new(&demo_rom()).unwrap();
+    for _ in 0..7 {
+        nes.run_frame();
+    }
+    // Stop mid-frame, where the PPU pipeline and CPU are both in full swing.
+    for _ in 0..1234 {
+        nes.step();
+    }
+    let state = nes.save_state();
+    assert_eq!(nes.save_state(), state, "saving must not change anything");
+
+    nes.set_buttons(0, button::B);
+    for _ in 0..5 {
+        nes.run_frame();
+    }
+    let expected = fingerprint(&nes);
+
+    // Wander off, then come back.
+    nes.set_buttons(0, button::LEFT | button::A);
+    for _ in 0..13 {
+        nes.run_frame();
+    }
+    assert_ne!(fingerprint(&nes), expected);
+    nes.load_state(&state).unwrap();
+    nes.set_buttons(0, button::B);
+    for _ in 0..5 {
+        nes.run_frame();
+    }
+    assert_eq!(fingerprint(&nes), expected);
+
+    // A freshly powered-on console can load it too.
+    let mut other = Nes::new(&demo_rom()).unwrap();
+    other.load_state(&state).unwrap();
+    other.set_buttons(0, button::B);
+    for _ in 0..5 {
+        other.run_frame();
+    }
+    assert_eq!(fingerprint(&other), expected);
+}
+
+#[test]
+fn bad_save_states_are_rejected_without_side_effects() {
+    use nesrs_core::StateError;
+
+    let mut nes = Nes::new(&demo_rom()).unwrap();
+    for _ in 0..5 {
+        nes.run_frame();
+    }
+    let state = nes.save_state();
+    for _ in 0..3 {
+        nes.run_frame();
+    }
+    let before = fingerprint(&nes);
+
+    assert_eq!(nes.load_state(b"not a state"), Err(StateError::NotAState));
+    let mut damaged = state.clone();
+    damaged[100] ^= 0x40;
+    assert_eq!(nes.load_state(&damaged), Err(StateError::Corrupt));
+    assert_eq!(nes.load_state(&state[..state.len() / 2]), Err(StateError::Corrupt));
+    assert_eq!(fingerprint(&nes), before);
+
+    // A state from another game is refused.
+    let mut other = Nes::new(&rom(&[0xA9, 0x02, 0x8D, 0x14, 0x40], 0)).unwrap();
+    assert_eq!(other.load_state(&state), Err(StateError::WrongRom));
+}

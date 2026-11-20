@@ -6,6 +6,7 @@ use crate::controller::Controller;
 use crate::cpu::Bus;
 use crate::mapper::Mapper;
 use crate::ppu::Ppu;
+use crate::state::State;
 
 pub(crate) struct SystemBus {
     pub ram: [u8; 0x800],
@@ -72,6 +73,24 @@ impl SystemBus {
         for offset in 0..=255u16 {
             let value = self.read((page as u16) << 8 | offset);
             self.write(0x2004, value);
+        }
+    }
+}
+
+impl SystemBus {
+    pub fn sync(&mut self, s: &mut State) {
+        s.bytes(&mut self.ram);
+        s.u64(&mut self.cycles);
+        s.u8(&mut self.open_bus);
+        s.bool(&mut self.nmi_line);
+        s.bool(&mut self.nmi_edge);
+        s.option_u8(&mut self.oam_dma);
+        s.u8(&mut self.stall);
+        self.ppu.sync(s);
+        self.apu.sync(s);
+        self.mapper.sync(s);
+        for controller in &mut self.controllers {
+            controller.sync(s);
         }
     }
 }

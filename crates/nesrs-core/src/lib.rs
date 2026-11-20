@@ -25,8 +25,10 @@ pub mod cpu;
 pub mod mapper;
 mod nes;
 pub mod ppu;
+pub mod state;
 
 pub use cartridge::RomError;
 pub use controller::button;
 pub use nes::{FRAME_RATE, Nes};
 pub use ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
+pub use state::StateError;

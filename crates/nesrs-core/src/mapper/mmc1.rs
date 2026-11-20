@@ -1,7 +1,8 @@
 //! Mapper 1 (MMC1): serial-loaded registers, 16/32 KiB PRG and 4/8 KiB CHR banking.
 
-use super::{Mapper, PrgRam, banked};
+use super::{Mapper, PrgRam, banked, sync_chr_ram};
 use crate::cartridge::{Cartridge, Mirroring};
+use crate::state::State;
 
 pub struct Mmc1 {
     cart: Cartridge,
@@ -120,6 +121,16 @@ impl Mapper for Mmc1 {
 
     fn load_save_ram(&mut self, data: &[u8]) {
         self.ram.load(data);
+    }
+
+    fn sync(&mut self, s: &mut State) {
+        self.ram.sync(s);
+        sync_chr_ram(&mut self.cart, s);
+        s.u8(&mut self.shift);
+        s.u8(&mut self.control);
+        s.u8(&mut self.chr0);
+        s.u8(&mut self.chr1);
+        s.u8(&mut self.prg);
     }
 }
 
