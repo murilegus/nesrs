@@ -23,6 +23,7 @@ a console (SNES) means adding a core crate; frontends can then host both.
 | `cartridge` | iNES / NES 2.0 parsing |
 | `mapper` | Cartridge bank-switching hardware |
 | `controller` | Standard joypad shift register |
+| `state` | Save state format and the reader/writer components sync through |
 | `nes` | The public `Nes` type tying it together |
 
 ### Timing model
@@ -53,6 +54,20 @@ timing and raster effects.
 - DMC sample fetches always steal 3 CPU cycles.
 - MMC1 does not ignore writes on consecutive cycles.
 
+### Save states
+
+Every component has one `sync(&mut self, &mut State)` method that lists its
+fields. The same method saves and loads, depending on how the `State` was
+created, so the two directions cannot get out of step. A finished state is:
+
+```
+"NESRSST" | version | ROM hash (8) | component data ... | checksum (8)
+```
+
+The layout is positional, so any change to a `sync` method must bump `VERSION`
+in `state.rs`. The framebuffer and the audio resampler are deliberately left
+out: one is redrawn within a frame, the other belongs to the host.
+
 ## The desktop frontend (`crates/nesrs`)
 
 - `app` — winit event loop. Emulates frames against a wall-clock deadline
@@ -60,4 +75,6 @@ timing and raster effects.
 - `audio` — cpal output stream fed from a queue. The core's sample rate is
   nudged by up to 0.5% each frame to hold the queue near 60 ms, which absorbs
   the drift between the sound card's clock and the system clock.
+- `session` — a loaded game and its files (battery save, save state slots).
+- `osd` — status messages drawn with a built-in bitmap font.
 - `video` — scaling and PPM screenshots.

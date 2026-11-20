@@ -9,15 +9,18 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = ["audio"]
+default = ["audio", "file-dialog"]
 # Sound output through cpal. On Linux this needs the ALSA development headers.
 audio = ["dep:cpal"]
+# Native "open file" dialog (Ctrl+O).
+file-dialog = ["dep:rfd"]
 
 [dependencies]
 nesrs-core = { path = "../nesrs-core", version = "0.1.0" }
 winit = "0.30"
 softbuffer = "0.4"
 cpal = { version = "0.18", optional = true }
+rfd = { version = "0.18", optional = true }
 
 [lints]
 workspace = true
