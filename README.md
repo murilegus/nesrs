@@ -111,7 +111,9 @@ in the browser's `localStorage`. Adding `?rom=some/file.nes` to the address
 loads a ROM hosted next to the page.
 
 `crates/nesrs-web/www` is a plain static site, so it can be published on any
-static host as it is.
+static host as it is. For GitHub Pages, set **Settings → Pages → Source** to
+"GitHub Actions" once; the `Deploy web frontend` workflow then publishes every
+push to `main`.
 
 ## Project layout
 
