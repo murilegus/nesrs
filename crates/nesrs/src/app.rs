@@ -1,45 +1,67 @@
 //! The windowed application: event handling, frame pacing and presentation.
 
 use std::num::NonZeroU32;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use nesrs_core::{FRAME_RATE, Nes, SCREEN_HEIGHT, SCREEN_WIDTH, button};
+use nesrs_core::{FRAME_RATE, SCREEN_HEIGHT, SCREEN_WIDTH, button};
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::Options;
 use crate::audio::AudioOutput;
+use crate::osd::{Anchor, Canvas};
+use crate::session::Session;
 use crate::video;
 
 /// How far emulation may fall behind real time before we stop trying to catch up.
 const MAX_CATCH_UP_FRAMES: u32 = 3;
+/// How long status messages stay on screen.
+const TOAST_TIME: Duration = Duration::from_millis(1800);
+/// Battery saves are written this often while playing, as well as on exit.
+const BATTERY_FLUSH_FRAMES: u64 = 600;
+
+const NO_ROM_HELP: &str = "CTRL+O: OPEN A ROM\nOR DROP A .NES FILE HERE";
+const BACKGROUND: u32 = 0x0010_1018;
+
+/// Messages sent to the event loop from other threads.
+enum UserEvent {
+    /// The file dialog closed, with the chosen ROM if any.
+    RomPicked(Option<PathBuf>),
+}
 
 struct App {
-    nes: Nes,
+    session: Option<Session>,
     audio: Option<AudioOutput>,
     samples: Vec<f32>,
     window: Option<Rc<Window>>,
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
-    title: String,
+    proxy: EventLoopProxy<UserEvent>,
     scale: u32,
     buttons: u8,
+    ctrl_held: bool,
     paused: bool,
     muted: bool,
+    dialog_open: bool,
+    /// Save state slot selected with the number keys.
+    slot: u8,
+    toast: Option<(String, Instant)>,
     frames_left: Option<u64>,
+    frames_run: u64,
     frame_time: Duration,
     next_frame: Instant,
     error: Option<String>,
 }
 
-/// Opens a window and runs the emulator until the user quits. Returns the
-/// console so the caller can save its state.
-pub fn run(nes: Nes, options: &Options) -> Result<Nes, String> {
+/// Opens a window and runs until the user quits. Returns the game that was
+/// loaded at that point, if any.
+pub fn run(session: Option<Session>, options: &Options) -> Result<Option<Session>, String> {
     let audio = match AudioOutput::start() {
         Ok(audio) => Some(audio),
         Err(message) => {
@@ -47,32 +69,41 @@ pub fn run(nes: Nes, options: &Options) -> Result<Nes, String> {
             None
         }
     };
-    let name = options.rom.file_stem().map(|s| s.to_string_lossy().into_owned());
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
+        .build()
+        .map_err(|e| format!("cannot start event loop: {e}"))?;
     let mut app = App {
-        nes,
+        session: None,
         audio,
         samples: Vec::new(),
         window: None,
         surface: None,
-        title: format!("{} - nesrs", name.unwrap_or_default()),
+        proxy: event_loop.create_proxy(),
         scale: options.scale,
         buttons: 0,
+        ctrl_held: false,
         paused: false,
         muted: options.mute,
+        dialog_open: false,
+        slot: 1,
+        toast: None,
         frames_left: options.frames,
+        frames_run: 0,
         frame_time: Duration::from_secs_f64(1.0 / FRAME_RATE),
         next_frame: Instant::now(),
         error: None,
     };
-    if let Some(audio) = &app.audio {
-        app.nes.set_sample_rate(audio.sample_rate());
+    if let Some(session) = session {
+        app.insert(session);
     }
 
-    let event_loop = EventLoop::new().map_err(|e| format!("cannot start event loop: {e}"))?;
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
+    if let Some(session) = &mut app.session {
+        session.flush_battery()?;
+    }
     match app.error {
         Some(message) => Err(message),
-        None => Ok(app.nes),
+        None => Ok(app.session),
     }
 }
 
@@ -91,17 +122,142 @@ fn button_for(key: KeyCode) -> Option<u8> {
     })
 }
 
+/// Maps the number row to a save state slot.
+fn slot_for(key: KeyCode) -> Option<u8> {
+    const DIGITS: [KeyCode; 10] = [
+        KeyCode::Digit0,
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+    ];
+    DIGITS.iter().position(|&digit| digit == key).map(|slot| slot as u8)
+}
+
+#[cfg(feature = "file-dialog")]
+fn pick_rom() -> Option<PathBuf> {
+    rfd::FileDialog::new().set_title("Open NES ROM").add_filter("NES ROM", &["nes"]).pick_file()
+}
+
+#[cfg(not(feature = "file-dialog"))]
+fn pick_rom() -> Option<PathBuf> {
+    None
+}
+
 impl App {
     fn fail(&mut self, event_loop: &ActiveEventLoop, message: String) {
         self.error = Some(message);
         event_loop.exit();
     }
 
+    fn title(&self) -> String {
+        match &self.session {
+            Some(session) => format!("{} - nesrs", session.name()),
+            None => "nesrs".into(),
+        }
+    }
+
+    /// Shows a short status message. The built-in font only has capitals.
+    fn toast(&mut self, message: impl Into<String>) {
+        self.toast = Some((message.into(), Instant::now() + TOAST_TIME));
+        self.redraw();
+    }
+
+    fn redraw(&self) {
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+
+    /// Makes `session` the running game.
+    fn insert(&mut self, mut session: Session) {
+        if let Some(audio) = &self.audio {
+            session.nes.set_sample_rate(audio.sample_rate());
+        }
+        session.nes.set_buttons(0, self.buttons);
+        self.session = Some(session);
+        self.paused = false;
+        self.next_frame = Instant::now();
+        if let Some(window) = &self.window {
+            window.set_title(&self.title());
+        }
+    }
+
+    /// Switches to another ROM, keeping the current game if it cannot be loaded.
+    fn open_rom(&mut self, path: &Path) {
+        match Session::open(path) {
+            Ok(session) => {
+                if let Some(old) = &mut self.session
+                    && let Err(message) = old.flush_battery()
+                {
+                    eprintln!("nesrs: {message}");
+                }
+                self.insert(session);
+                self.redraw();
+            }
+            Err(message) => {
+                eprintln!("nesrs: {}: {message}", path.display());
+                self.toast(format!("CANNOT OPEN ROM\n{message}"));
+            }
+        }
+    }
+
+    /// Opens the file dialog on another thread so the window stays responsive.
+    fn show_open_dialog(&mut self) {
+        if self.dialog_open {
+            return;
+        }
+        if !cfg!(feature = "file-dialog") {
+            self.toast("NO FILE DIALOG IN THIS BUILD");
+            return;
+        }
+        self.dialog_open = true;
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let _ = proxy.send_event(UserEvent::RomPicked(pick_rom()));
+        });
+    }
+
+    fn save_state(&mut self) {
+        let slot = self.slot;
+        let Some(session) = &mut self.session else { return };
+        match session.save_state(slot) {
+            Ok(()) => self.toast(format!("STATE {slot} SAVED")),
+            Err(message) => {
+                eprintln!("nesrs: {message}");
+                self.toast("CANNOT SAVE STATE");
+            }
+        }
+    }
+
+    fn load_state(&mut self) {
+        let slot = self.slot;
+        let Some(session) = &mut self.session else { return };
+        match session.load_state(slot) {
+            Ok(true) => {
+                // The state holds the buttons as they were when it was saved.
+                session.nes.set_buttons(0, self.buttons);
+                self.next_frame = Instant::now();
+                self.toast(format!("STATE {slot} LOADED"));
+            }
+            Ok(false) => self.toast(format!("STATE {slot} IS EMPTY")),
+            Err(message) => {
+                eprintln!("nesrs: {message}");
+                self.toast("CANNOT LOAD STATE");
+            }
+        }
+    }
+
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
         let size =
             LogicalSize::new(SCREEN_WIDTH as u32 * self.scale, SCREEN_HEIGHT as u32 * self.scale);
         let attributes = Window::default_attributes()
-            .with_title(self.title.clone())
+            .with_title(self.title())
             .with_inner_size(size)
             .with_min_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32));
         let window = Rc::new(
@@ -115,26 +271,50 @@ impl App {
     }
 
     fn key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, pressed: bool, repeat: bool) {
+        if self.ctrl_held {
+            if pressed && !repeat && key == KeyCode::KeyO {
+                self.show_open_dialog();
+            }
+            return;
+        }
         if let Some(mask) = button_for(key) {
             if pressed {
                 self.buttons |= mask;
             } else {
                 self.buttons &= !mask;
             }
-            self.nes.set_buttons(0, self.buttons);
+            if let Some(session) = &mut self.session {
+                session.nes.set_buttons(0, self.buttons);
+            }
             return;
         }
         if !pressed || repeat {
             return;
         }
+        if let Some(slot) = slot_for(key) {
+            self.slot = slot;
+            self.toast(format!("STATE SLOT {slot}"));
+            return;
+        }
         match key {
             KeyCode::Escape => event_loop.exit(),
-            KeyCode::KeyR => self.nes.reset(),
-            KeyCode::KeyP => {
+            KeyCode::KeyR => {
+                if let Some(session) = &mut self.session {
+                    session.nes.reset();
+                    self.toast("RESET");
+                }
+            }
+            KeyCode::KeyP if self.session.is_some() => {
                 self.paused = !self.paused;
                 self.next_frame = Instant::now();
+                self.redraw();
             }
-            KeyCode::KeyM => self.muted = !self.muted,
+            KeyCode::KeyM => {
+                self.muted = !self.muted;
+                self.toast(if self.muted { "SOUND OFF" } else { "SOUND ON" });
+            }
+            KeyCode::F5 => self.save_state(),
+            KeyCode::F8 => self.load_state(),
             KeyCode::F11 => {
                 if let Some(window) = &self.window {
                     let fullscreen = window.fullscreen().is_none();
@@ -147,6 +327,8 @@ impl App {
 
     /// Emulates one frame and hands its sound to the audio device.
     fn emulate_frame(&mut self) {
+        let Some(session) = &mut self.session else { return };
+        let nes = &mut session.nes;
         if let Some(audio) = &self.audio {
             // The audio device and the emulation loop run off different clocks.
             // Nudging the generated sample rate by up to 0.5% keeps the queue
@@ -154,15 +336,21 @@ impl App {
             let target = audio.target_queue() as f64;
             let error = (target - audio.queued() as f64) / target;
             let ratio = 1.0 + (error * 0.005).clamp(-0.005, 0.005);
-            self.nes.set_sample_rate((audio.sample_rate() as f64 * ratio).round() as u32);
+            nes.set_sample_rate((audio.sample_rate() as f64 * ratio).round() as u32);
         }
-        self.nes.run_frame();
+        nes.run_frame();
         self.samples.clear();
-        self.nes.drain_audio(&mut self.samples);
+        nes.drain_audio(&mut self.samples);
         if let Some(audio) = &self.audio
             && !self.muted
         {
             audio.push(&self.samples);
+        }
+        self.frames_run += 1;
+        if self.frames_run.is_multiple_of(BATTERY_FLUSH_FRAMES)
+            && let Err(message) = session.flush_battery()
+        {
+            eprintln!("nesrs: {message}");
         }
     }
 
@@ -178,12 +366,27 @@ impl App {
         };
         surface.resize(width, height).map_err(|e| e.to_string())?;
         let mut buffer = surface.buffer_mut().map_err(|e| e.to_string())?;
-        video::blit(self.nes.framebuffer(), &mut buffer, size.width as usize, size.height as usize);
+        let (width, height) = (size.width as usize, size.height as usize);
+        match &self.session {
+            Some(session) => video::blit(session.nes.framebuffer(), &mut buffer, width, height),
+            None => buffer.fill(BACKGROUND),
+        }
+
+        let text_scale = (width / SCREEN_WIDTH).min(height / SCREEN_HEIGHT).max(1);
+        let mut canvas = Canvas { pixels: &mut buffer, width, height };
+        if self.session.is_none() {
+            canvas.text(NO_ROM_HELP, Anchor::Centre, text_scale);
+        } else if self.paused {
+            canvas.text("PAUSED", Anchor::Centre, text_scale);
+        }
+        if let Some((message, _)) = &self.toast {
+            canvas.text(message, Anchor::BottomLeft, text_scale);
+        }
         buffer.present().map_err(|e| e.to_string())
     }
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none()
             && let Err(message) = self.create_window(event_loop)
@@ -192,17 +395,38 @@ impl ApplicationHandler for App {
         }
     }
 
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        match event {
+            UserEvent::RomPicked(path) => {
+                self.dialog_open = false;
+                if let Some(path) = path {
+                    self.open_rom(&path);
+                }
+                // Emulation kept its deadline while the dialog was up; do not
+                // try to make up for any time lost.
+                self.next_frame = Instant::now();
+            }
+        }
+    }
+
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.ctrl_held = modifiers.state().control_key();
+            }
             WindowEvent::KeyboardInput {
                 event: KeyEvent { physical_key: PhysicalKey::Code(key), state, repeat, .. },
                 ..
             } => self.key(event_loop, key, state == ElementState::Pressed, repeat),
+            WindowEvent::DroppedFile(path) => self.open_rom(&path),
             WindowEvent::Focused(false) => {
                 // Key releases are not delivered while unfocused.
                 self.buttons = 0;
-                self.nes.set_buttons(0, 0);
+                self.ctrl_held = false;
+                if let Some(session) = &mut self.session {
+                    session.nes.set_buttons(0, 0);
+                }
             }
             WindowEvent::RedrawRequested => {
                 if let Err(message) = self.draw() {
@@ -214,11 +438,19 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if self.paused {
-            event_loop.set_control_flow(ControlFlow::Wait);
+        let now = Instant::now();
+        if self.toast.as_ref().is_some_and(|(_, expiry)| now >= *expiry) {
+            self.toast = None;
+            self.redraw();
+        }
+        if self.paused || self.session.is_none() {
+            // Nothing to animate: sleep until input arrives or the toast expires.
+            event_loop.set_control_flow(match &self.toast {
+                Some((_, expiry)) => ControlFlow::WaitUntil(*expiry),
+                None => ControlFlow::Wait,
+            });
             return;
         }
-        let now = Instant::now();
         if now >= self.next_frame {
             // After a long stall (window dragged, laptop suspended) skip ahead
             // rather than fast-forwarding through the backlog.
@@ -236,9 +468,7 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            if let Some(window) = &self.window {
-                window.request_redraw();
-            }
+            self.redraw();
         }
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
     }

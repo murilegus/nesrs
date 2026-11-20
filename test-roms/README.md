@@ -16,3 +16,12 @@ so each developer downloads them locally.
 | Test | Status |
 |---|---|
 | nestest (all 8991 logged instructions: registers, flags, cycle count and PPU position) | Pass |
+
+## Checking a game by hand
+
+Headless mode can play a scripted input sequence and save a screenshot, which
+is handy for reproducing a rendering bug:
+
+```bash
+cargo run --release -- --headless --frames 1000 --input 420:S,430:,700:R --screenshot out.ppm game.nes
+```

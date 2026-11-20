@@ -3,9 +3,9 @@
 A NES emulator written in Rust, built as a portable emulation core with thin
 per-platform frontends.
 
-> **Status: early.** The CPU matches the nestest reference log cycle for cycle, but the
-> PPU and APU have not yet been validated against accuracy test ROMs or a broad
-> set of games. Expect bugs.
+> **Status: early.** The CPU matches the nestest reference log cycle for cycle, and
+> Contra (UxROM) boots and plays, but the PPU and APU have not yet been validated
+> against accuracy test ROMs or a broad set of games. Expect bugs.
 
 ## Features
 
@@ -14,14 +14,15 @@ per-platform frontends.
   sprite-0 hit, colour emphasis
 - **APU** — both pulse channels, triangle, noise and DMC, with the frame counter and IRQs
 - **Mappers** — NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4), AxROM (7)
+- **Save states** — ten slots per game, checked against the ROM they belong to
 - **Desktop frontend** — keyboard input, sound, integer scaling, fullscreen,
-  battery saves (`.sav` next to the ROM)
+  open ROMs from a file dialog or by drag and drop, battery saves
 
 NTSC only for now.
 
 ## Building
 
-You need a [Rust toolchain](https://rustup.rs) (1.85 or newer).
+You need a [Rust toolchain](https://rustup.rs) (1.92 or newer).
 
 On Linux, sound needs the ALSA development files:
 
@@ -35,7 +36,8 @@ Then:
 cargo run --release -- path/to/game.nes
 ```
 
-To build without sound (and without the ALSA dependency):
+Optional features, both on by default: `audio` (sound, needs ALSA on Linux)
+and `file-dialog` (the `Ctrl+O` dialog). To build without either:
 
 ```bash
 cargo run --release --no-default-features -- path/to/game.nes
@@ -44,14 +46,17 @@ cargo run --release --no-default-features -- path/to/game.nes
 ## Usage
 
 ```
-nesrs [OPTIONS] <ROM>
+nesrs [OPTIONS] [ROM]
 
   --scale <N>          Initial window scale (default 3)
   --mute               Start with sound off
   --frames <N>         Quit after emulating N frames
   --screenshot <PATH>  Write the last frame as a PPM image on exit
   --headless           Run without a window or sound (use with --frames)
+  --input <SCRIPT>     Scripted input for --headless, e.g. 120:S,125:,300:RA
 ```
+
+Started without a ROM, the window opens empty and waits for one.
 
 | Key | Action |
 |---|---|
@@ -62,8 +67,18 @@ nesrs [OPTIONS] <ROM>
 | `R` | Reset |
 | `P` | Pause |
 | `M` | Mute |
+| `Ctrl+O` | Open a ROM |
+| `F5` / `F8` | Save / load state |
+| `0`-`9` | Select the save state slot (default 1) |
 | `F11` | Fullscreen |
 | `Esc` | Quit |
+
+Files are kept next to the ROM: `game.sav` for battery-backed cartridge RAM
+(written every ten seconds and on exit) and `game.state0` to `game.state9`
+for save states.
+
+Dropping a file onto the window works on X11, Windows and macOS; the windowing
+library does not support it on Wayland yet, so use `Ctrl+O` there.
 
 ## Project layout
 
@@ -86,7 +101,7 @@ Extra accuracy tests run when their ROMs are present; see
 ## Roadmap
 
 - Validate against blargg's and other test ROM suites (nestest already passes)
-- Save states, second controller, gamepad support
+- Second controller, gamepad support, configurable keys
 - Web frontend (WebAssembly)
 - More mappers, PAL timing
 - A SNES core alongside the NES one
